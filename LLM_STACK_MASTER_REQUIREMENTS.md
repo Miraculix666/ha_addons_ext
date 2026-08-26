@@ -7,7 +7,7 @@
 - 💾 **`llm_stack_backup`**: Vector database dumps, model weights, benchmark logs.
 - 🛠️ **`homelab_infra`**: Proxmox LXC 600 playbooks, Traefik reverse proxy, DNS setup.
 - 🏠 **`ha_config`**: Home Assistant active configuration, custom components (`llmvision`, `ollama_vision`, `openai_stt`).
-- 🧩 **`ha_addons_ext`**: HACS custom components (`Obico-HA-addon`, `tariffwise`, `updateall`).
+- 🧩 **`ha_extensions`**: HACS custom components (`Obico-HA-addon`, `tariffwise`, `updateall`).
 - 🧠 **`agents_and_prompts`**: Central agent prompts, system standards, Jules directives.
 
 ---
@@ -28,7 +28,7 @@ To maintain clean architecture, **Obico** and **Home Assistant Integrations** ar
 | **Traefik Proxy (OPTIONAL)** | `80 / 443` | [traefik.io](https://traefik.io) | **Optional** reverse proxy for direct remote access (`*.aragdun`). |
 
 ### 1.2 Connected External Services & Integrations (On-Demand)
-* **Obico 3D Printer AI** (`ha_addons_ext/Obico-HA-addon` / Port `8088`):
+* **Obico 3D Printer AI** (`ha_extensions/Obico-HA-addon` / Port `8088`):
   - Connects on-demand to `http://<llm_ip>:8090/v1` for Mercury 3D printer print-failure AI detection.
 * **HA LLM Vision** (`ha_config/homeassistant/custom_components/llmvision`):
   - Home Assistant integration sending camera snapshots to `http://<llm_ip>:8090/v1` for AI event analysis.
@@ -74,7 +74,7 @@ In Home Assistant (`ha_config`), navigate to **Settings -> Devices & Services ->
    - **Model**: `gemma` / `llmvision-base`
 
 ### 3.2 Connecting Obico (Mercury 3D Printer AI)
-In Obico Server settings (`ha_addons_ext/Obico-HA-addon`):
+In Obico Server settings (`ha_extensions/Obico-HA-addon`):
 - Set AI Inference Endpoint: `http://192.168.80.60:8090/v1`
 - Model Provider: `Reasonix Dynamic Router`
 
@@ -153,4 +153,5 @@ auth_overrides:
 
 <!-- @jules send to jules.google.com -->
 > **JULES MASTER EXECUTION DIRECTIVE:**  
-> `@jules: Read 'agents_and_prompts/LLM_STACK_MASTER_REQUIREMENTS.md'. Execute complete configuration and adjustment across all repositories ('llm_stack_core', 'llm_stack_config', 'homelab_infra', 'ha_config', 'ha_addons_ext'). Deploy core services (llama.cpp, Reasonix, Qdrant, Hermes Control Deck, Jarvis, OpenGPT WebUI). Keep Obico and HA LLM Vision as connected external API consumers. Universal defaults must remain admin:admin and user:user with token 'LLM-Stack'. Personal domains like 'aragdun' stay strictly in host overrides. Configure complete hardware matrix including Mac Intel (AVX2/AVX512), Mac Apple Silicon (Metal), NVIDIA CUDA, AMD ROCm, Intel OpenVINO/Arc, and Coral TPU. Pre-configure Home Assistant connection guide for Extended OpenAI Conversation and LLM Vision. Enforce Repository-Level Split (no secrets in _core repos). Log all results to '/var/log/hlm_jules_master_execution.log'.`
+> `@jules: Read 'agents_and_prompts/LLM_STACK_MASTER_REQUIREMENTS.md'. Execute complete configuration and adjustment across all repositories ('llm_stack_core', 'llm_stack_config', 'homelab_infra', 'ha_config', 'ha_extensions'). Deploy core services (llama.cpp, Reasonix, Qdrant, Hermes Control Deck, Jarvis, OpenGPT WebUI). Keep Obico and HA LLM Vision as connected external API consumers. Universal defaults must remain admin:admin and user:user with token 'LLM-Stack'. Personal domains like 'aragdun' stay strictly in host overrides. Configure complete hardware matrix including Mac Intel (AVX2/AVX512), Mac Apple Silicon (Metal), NVIDIA CUDA, AMD ROCm, Intel OpenVINO/Arc, and Coral TPU. Pre-configure Home Assistant connection guide for Extended OpenAI Conversation and LLM Vision. Enforce Repository-Level Split (no secrets in _core repos). Log all results to '/var/log/hlm_jules_master_execution.log'.`
+

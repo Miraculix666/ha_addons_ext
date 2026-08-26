@@ -1,6 +1,6 @@
 # TariffWise ⚡ - Dynamic Energy Tariff & Device Optimization Suite
 
-**Target Repository**: `ha_addons_ext/tariffwise/README.md`  
+**Target Repository**: `ha_extensions/tariffwise/README.md`  
 **Integration Scope**: Tibber API, PyScript Helper Engine, Home Assistant Blueprints, Echo TTS Announcements, Pool Pump Controller, EV & Appliance Scheduler, Lovelace Energy Dashboard.
 
 ---
@@ -37,7 +37,7 @@ TariffWise is an all-in-one smart energy optimization suite for Home Assistant, 
 ## 🛠️ System Components & Directory Layout
 
 ```
-ha_addons_ext/tariffwise/
+ha_extensions/tariffwise/
 ├── README.md                           # Master specification & Jules directive
 ├── config/
 │   ├── dev/                            # Universal default settings
@@ -57,15 +57,16 @@ ha_addons_ext/tariffwise/
 ## 🤖 Automated Repair & Sync Protocol (Jules Directives)
 
 > **JULES TARIFFWISE EXECUTION DIRECTIVE:**  
-> `@jules: Read 'ha_addons_ext/tariffwise/README.md'. Inspect all PyScript engines ('pyscript/tibber_pool_pump.py', 'pyscript/tibber_smart_scheduler.py') and blueprints ('blueprints/*.yaml'). Ensure 100% compliance with master specifications: 1) Minimum 1.5h daily pool pump runtime with 12:00-13:30 fallback on API drop, 2) Summer 3h-interval 15-min water circulation guard, 3) Echo TTS announcements and daily 13:00/19:00 forecast pushes, 4) Negative price (< 0 ct) auto-trigger. Fix all syntax, entity mismatches, and PyScript execution bugs. Commit and push all repaired code directly to 'main'. Log results to '/var/log/tariffwise_jules_repair.log'.`
+> `@jules: Read 'ha_extensions/tariffwise/README.md'. Inspect all PyScript engines ('pyscript/tibber_pool_pump.py', 'pyscript/tibber_smart_scheduler.py') and blueprints ('blueprints/*.yaml'). Ensure 100% compliance with master specifications: 1) Minimum 1.5h daily pool pump runtime with 12:00-13:30 fallback on API drop, 2) Summer 3h-interval 15-min water circulation guard, 3) Echo TTS announcements and daily 13:00/19:00 forecast pushes, 4) Negative price (< 0 ct) auto-trigger. Fix all syntax, entity mismatches, and PyScript execution bugs. Commit and push all repaired code directly to 'main'. Log results to '/var/log/tariffwise_jules_repair.log'.`
 
 ---
 
 ## 🔄 Automatic Live Sync & Activation Workflow
 
 ### How changes flow into Home Assistant:
-1. **Jules Execution**: Jules processes the directive on `jules.google.com` or via GitHub commit and pushes the repaired TariffWise code directly into `https://github.com/Miraculix666/ha_addons_ext.git`.
+1. **Jules Execution**: Jules processes the directive on `jules.google.com` or via GitHub commit and pushes the repaired TariffWise code directly into `https://github.com/Miraculix666/ha_extensions.git`.
 2. **20-Minute Cron Auto-Sync**: The background master sync script (`/root/scripts/github_sync_cron.sh`) automatically pulls/syncs remote updates every 20 minutes.
-3. **Live Container Mount**: `/GitHub/ha_addons_ext/tariffwise` is linked to Home Assistant (`/config/packages/` / `/config/pyscript/`).
+3. **Live Container Mount**: `/GitHub/ha_extensions/tariffwise` is linked to Home Assistant (`/config/packages/` / `/config/pyscript/`).
 4. **Automatic Service Reload**: Home Assistant automatically reloads PyScript engines and automation blueprints without requiring a full manual container restart.
+
 

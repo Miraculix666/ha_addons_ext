@@ -6,7 +6,7 @@
 ---
 
 ## 1. Execution Objective
-Enforce the universal system-wide standards across all non-LLM repositories (`ha_core`, `ha_config`, `ha_backup_full`, `ha_backup_slim`, `ha_addons_ext`, `homelab_infra`, `homelab_config`, `proxmox_host_backup`).
+Enforce the universal system-wide standards across all non-LLM repositories (`ha_core`, `ha_config`, `ha_backup_full`, `ha_backup`, `ha_extensions`, `homelab_infra`, `homelab_config`, `homelab_backup`).
 
 ---
 
@@ -31,3 +31,4 @@ After applying changes in this repository:
 1. Run syntax validation (`ha core check` for HA, `pyinfra --syntax` for infra).
 2. Ensure no uncommitted diffs remain.
 3. Log results to `/var/log/hlm_jules_general_execution.log`.
+
