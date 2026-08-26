@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Multi-Node Universal AI Codebase Guardian & Multi-Channel Communicator
 Monitors Git commit changes across all 12 ecosystem repositories.
@@ -176,7 +176,7 @@ def run_guardian_check():
     if changed_repos:
         logger.info(f"AI Guardian triggered for updated repos: {changed_repos}")
         
-        if any(r in changed_repos for r in ["ha_config", "ha_addons_ext", "ha_backup_slim"]):
+        if any(r in changed_repos for r in ["ha_config", "ha_extensions", "ha_backup"]):
             check_ha_config_and_reload(changed_repos)
         else:
             broadcast_alert(
