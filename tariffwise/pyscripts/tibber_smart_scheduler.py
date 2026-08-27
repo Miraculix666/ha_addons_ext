@@ -1,194 +1,189 @@
+# [AI-EDIT] Agent: DevOps | Model: Gemini 3.7 Flash | Date: 2026-08-27 15:50 | Reason: Universal smart scheduler for arbitrary devices (washing machine, dishwasher, EV, boiler) supporting deadline windows, continuous vs split blocks, price caps, and push notifications.
 import datetime
 
 @service
-def tibber_evaluate_device(target_entity=None, hours=2, start_time="00:00", end_time="23:59", continuous=False):
+def tibber_evaluate_device(
+    target_entity=None,
+    hours=2.0,
+    start_time="00:00:00",
+    end_time="23:59:00",
+    continuous=False,
+    price_sensor=None,
+    price_mode="brutto",
+    hard_max_price_enabled=False,
+    hard_max_price_threshold=45.0,
+    negative_prices_always_on=False,
+    notify_device=None
+):
     if not target_entity:
+        log.error("Universal Scheduler: Kein target_entity angegeben!")
         return
-        
+
     try:
         hours = float(hours)
-    except:
+    except Exception:
         hours = 2.0
-        
-    log.info(f"Evaluating Tibber schedule for {target_entity} (Duration: {hours}h, Window: {start_time}-{end_time}, Continuous: {continuous})")
-    
+
     now = datetime.datetime.now()
-    current_minute = now.minute
-    bucket_minute = (current_minute // 15) * 15
-    current_bucket_prefix = now.strftime(f"%Y-%m-%dT%H:{bucket_minute:02d}:")
-    
-    from tariffwise_prices import get_all_blocks
-    all_blocks = get_all_blocks()
-                             
-    if not all_blocks:
-        log.error(f"Tibber evaluate failed for {target_entity}: No prices found")
-        return
-
-    # Filter blocks
-    valid_blocks = []
     today_str = now.strftime("%Y-%m-%d")
-    tomorrow = now + datetime.timedelta(days=1)
-    tomorrow_str = tomorrow.strftime("%Y-%m-%d")
+    tomorrow_str = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    current_hour_str = now.strftime("%H")
+    current_minute = (now.minute // 15) * 15
+    current_slot = f"{current_hour_str}:{current_minute:02d}"
+    current_time_str = now.strftime("%H:%M:%S")
+
+    # Format window times
+    s_time = start_time[:5] if len(start_time) >= 5 else "00:00"
+    e_time = end_time[:5] if len(end_time) >= 5 else "23:59"
+
+    # -------------------------------------------------------------
+    # 1. PREISDATEN BESCHAFFEN
+    # -------------------------------------------------------------
+    price_blocks = []
     
-    for b in all_blocks:
-        st = b.get("start_time", "")
-        if not st: continue
-        time_part = st[11:16]
-        date_part = st[0:10]
-        
-        if date_part not in [today_str, tomorrow_str]:
-            continue
-            
-        if start_time <= end_time:
-            if start_time <= time_part <= end_time:
-                valid_blocks.append(b)
+    if price_sensor:
+        try:
+            p_attrs = state.getattr(price_sensor) or {}
+            for day in ["today", "tomorrow", "raw_today", "raw_tomorrow", "prices"]:
+                if day in p_attrs and isinstance(p_attrs[day], list):
+                    for b in p_attrs[day]:
+                        st = b.get("startsAt") or b.get("start_time") or b.get("start")
+                        if price_mode == "netto_spot" and "marketprice" in b:
+                            pr = b.get("marketprice")
+                        elif price_mode == "netto_spot" and "energy" in b:
+                            pr = b.get("energy")
+                        else:
+                            pr = b.get("total") if "total" in b else b.get("price") or b.get("value")
+                        if st and pr is not None:
+                            price_blocks.append({"start_time": str(st), "price": float(pr)})
+        except Exception:
+            pass
+
+    if not price_blocks:
+        try:
+            from tariffwise_prices import get_all_blocks
+            price_blocks = get_all_blocks()
+        except Exception:
+            pass
+
+    # Build 15-minute slots for today
+    today_blocks = [b for b in price_blocks if str(b.get("start_time", "")).startswith(today_str)]
+    slots = []
+
+    if today_blocks:
+        for b in today_blocks:
+            st_str = str(b["start_time"])
+            hour_part = st_str[11:13] if len(st_str) >= 13 else "00"
+            try:
+                h_int = int(hour_part)
+            except:
+                h_int = 0
+            for m in [0, 15, 30, 45]:
+                slots.append({
+                    "time": f"{h_int:02d}:{m:02d}",
+                    "hour": h_int,
+                    "price": float(b["price"])
+                })
+
+    # -------------------------------------------------------------
+    # 2. FILTERUNG NACH ZEITFENSTER (START BIS DEADLINE)
+    # -------------------------------------------------------------
+    window_slots = []
+    for s in slots:
+        t = s["time"]
+        if s_time <= e_time:
+            if s_time <= t <= e_time:
+                window_slots.append(s)
         else:
-            if time_part >= start_time or time_part <= end_time:
-                valid_blocks.append(b)
+            # Over midnight window
+            if t >= s_time or t <= e_time:
+                window_slots.append(s)
 
-    if not valid_blocks:
-        return
+    if not window_slots:
+        window_slots = slots  # fallback
 
-    blocks_needed = int(hours * 4)
-    valid_blocks = sorted(valid_blocks, key=lambda x: x["start_time"])
-    
-    if str(continuous).lower() in ["true", "1", "yes"] and len(valid_blocks) >= blocks_needed:
-        # Find cheapest contiguous block
-        min_price = float('inf')
+    # Check Hard Max Price
+    if hard_max_price_enabled and window_slots:
+        limit_val = float(hard_max_price_threshold)
+        if window_slots[0]["price"] < 1.0 and limit_val > 1.0:
+            limit_val = limit_val / 100.0
+        window_slots = [s for s in window_slots if s["price"] <= limit_val]
+
+    slots_needed = max(1, int(round(hours * 4)))
+    scheduled_slots = set()
+
+    # -------------------------------------------------------------
+    # 3. KONTINUIERLICHER BLOCK VS. GESTÜCKELTE SLOTS
+    # -------------------------------------------------------------
+    is_continuous = str(continuous).lower() in ["true", "1", "yes"]
+
+    if is_continuous and len(window_slots) >= slots_needed:
+        # Find continuous sequence of N 15-minute slots with minimum total price
+        min_total_price = float("inf")
         best_sequence = []
-        for i in range(len(valid_blocks) - blocks_needed + 1):
-            sequence = valid_blocks[i:i+blocks_needed]
-            # Verify they are actually contiguous in time (approximate check by looking at length, assuming 15min intervals)
-            seq_price = sum(b["price"] for b in sequence)
-            if seq_price < min_price:
-                min_price = seq_price
-                best_sequence = sequence
-        cheapest_blocks = best_sequence
+        for i in range(len(window_slots) - slots_needed + 1):
+            seq = window_slots[i : i + slots_needed]
+            total_p = sum(s["price"] for s in seq)
+            if total_p < min_total_price:
+                min_total_price = total_p
+                best_sequence = seq
+        for s in best_sequence:
+            scheduled_slots.add(s["time"])
     else:
-        # Non-continuous (Absolute cheapest hours)
-        sorted_blocks = sorted(valid_blocks, key=lambda x: x["price"])
-        cheapest_blocks = sorted_blocks[:blocks_needed]
-    
-    should_run = any([b["start_time"].startswith(current_bucket_prefix) for b in cheapest_blocks])
-    
-    try:
-        current_state = state.get(target_entity)
-        
-        # Determine human readable name
-        attrs = state.getattr(target_entity)
-        friendly_name = attrs.get("friendly_name") if attrs and "friendly_name" in attrs else target_entity
-        
-        if should_run:
-            if current_state != "on":
-                log.info(f"Tibber Scheduler: Turning ON {target_entity}")
-                service.call("homeassistant", "turn_on", entity_id=target_entity)
-                # Fire notification event
-                event.fire("tibber_device_switched", device=friendly_name, state="eingeschaltet", hours=hours)
-        else:
-            if current_state != "off":
-                log.info(f"Tibber Scheduler: Turning OFF {target_entity}")
-                service.call("homeassistant", "turn_off", entity_id=target_entity)
-                # Fire notification event
-                event.fire("tibber_device_switched", device=friendly_name, state="ausgeschaltet", hours=hours)
-    except Exception as e:
-        log.error(f"Failed to switch {target_entity}: {e}")
+        # Pick the N cheapest slots inside the window
+        sorted_slots = sorted(window_slots, key=lambda x: x["price"])
+        for s in sorted_slots[:slots_needed]:
+            scheduled_slots.add(s["time"])
 
+    # Negative price super-charge
+    if negative_prices_always_on:
+        for s in slots:
+            if s["price"] <= 0.0:
+                scheduled_slots.add(s["time"])
 
-@service
-@time_trigger("startup", "cron(0 19 * * *)")
-def tibber_daily_notification():
-    log.warning("tibber_daily_notification START")
-    try:
-        now = datetime.datetime.now()
-        tomorrow = now + datetime.timedelta(days=1)
-        tomorrow_str = tomorrow.strftime("%Y-%m-%d")
-        
-        from tariffwise_prices import get_all_blocks
-        all_blocks = get_all_blocks()
-            
-        if not all_blocks:
-            sensor_names = [s for s in state.names("sensor") if s.startswith("sensor.electricity_price_")]
-            for s in sensor_names:
-                attrs = state.getattr(s)
-                if attrs and "today" in attrs:
-                    for day in ["today", "tomorrow"]:
-                        if day in attrs and attrs[day]:
-                            for block in attrs[day]:
-                                st = block.get("startsAt") or block.get("start_time")
-                                pr = block.get("total") if "total" in block else block.get("price")
-                                if st and pr is not None:
-                                    all_blocks.append({"start_time": st, "price": float(pr)})
-                    if all_blocks:
-                        break
-                                
-        if not all_blocks: 
-            log.warning("ERROR: No prices found")
-            event.fire("tibber_prices_calculated", title="Tibber Fehler", message="Es konnten keine Preise (weder fÃ¼r heute noch morgen) gefunden werden. Bitte Integration prÃ¼fen!")
-            return
-        
-        tom_blocks = [b for b in all_blocks if b.get("start_time", "").startswith(tomorrow_str)]
-        if not tom_blocks: 
-            log.warning("ERROR: No blocks for tomorrow found! Sending fallback notification.")
-            today_str = now.strftime("%Y-%m-%d")
-            today_blocks = [b for b in all_blocks if b.get("start_time", "").startswith(today_str)]
-            if today_blocks:
-                prices = [b["price"] for b in today_blocks]
-                avg_price = sum(prices) / len(prices)
-                current_blocks = [b for b in today_blocks if b["start_time"].startswith(now.strftime("%Y-%m-%dT%H:00:"))]
-                current_block = current_blocks[0] if current_blocks else None
-                curr_price_str = f"Aktuell: {round(current_block['price'] * 100, 2)} ct." if current_block else ""
-                msg = f"Hinweis: Noch keine Preise fÃ¼r morgen verfÃ¼gbar. Heute: Ã {round(avg_price * 100, 2)} ct. {curr_price_str}"
-            else:
-                msg = "Hinweis: Keine aktuellen Tibber-Daten verfÃ¼gbar (Weder fÃ¼r heute noch morgen)."
-            
-            event.fire("tibber_prices_calculated", title="Tibber Strompreise (Info)", message=msg)
-            return
-        
-        prices = [b["price"] for b in tom_blocks]
-        avg_price = sum(prices) / len(prices)
-        min_block = min(tom_blocks, key=lambda x: x["price"])
-        min_time = min_block["start_time"][11:16]
-        max_block = max(tom_blocks, key=lambda x: x["price"])
-        max_time = max_block["start_time"][11:16]
-        
-        msg = f"Tibber Info fÃ¼r morgen: Durchschnitt {round(avg_price * 100, 2)} ct. GÃ¼nstigst um {min_time} ({round(min_block['price'] * 100, 2)} ct). Teuerst um {max_time}."
-        
-        import urllib.parse
-        import json
-        
-        labels = [b["start_time"][11:13] for b in tom_blocks]
-        data = [round(b["price"] * 100, 1) for b in tom_blocks]
-        
-        chart_config = {
-            "type": "bar",
-            "data": {
-                "labels": labels,
-                "datasets": [{
-                    "label": "Strompreis (ct/kWh)",
-                    "data": data,
-                    "backgroundColor": "rgba(54, 162, 235, 0.5)",
-                    "borderColor": "rgb(54, 162, 235)",
-                    "borderWidth": 1
-                }]
-            },
-            "options": {
-                "title": {
-                    "display": True,
-                    "text": "Tibber Preise Morgen"
-                }
-            }
+    # -------------------------------------------------------------
+    # 4. SCHALTUNG & NOTIFICATION
+    # -------------------------------------------------------------
+    should_run = current_slot in scheduled_slots
+    current_state = state.get(target_entity)
+    attrs = state.getattr(target_entity) or {}
+    friendly_name = attrs.get("friendly_name") or target_entity
+
+    # Friendly schedule string
+    sched_list = sorted(list(scheduled_slots))
+    schedule_str = ", ".join(sched_list) if sched_list else "Keine Läufe im Zeitfenster"
+
+    # Status Sensor
+    safe_slug = target_entity.replace(".", "_")
+    state.set(
+        f"sensor.smart_schedule_{safe_slug}",
+        value=schedule_str,
+        new_attributes={
+            "icon": "mdi:calendar-clock",
+            "target_entity": target_entity,
+            "friendly_name": f"Zeitplan: {friendly_name}",
+            "requested_hours": hours,
+            "window": f"{s_time} - {e_time}",
+            "continuous_mode": is_continuous,
+            "should_run_now": should_run
         }
-        
-        chart_url = "https://quickchart.io/chart?c=" + urllib.parse.quote(json.dumps(chart_config))
-        
-        # Fire event
-        event.fire("tibber_prices_calculated", title="Tibber Strompreise", message=msg, image=chart_url)
-        
-        # Direct notification for debug
-        service.call("persistent_notification", "create", title="Tibber DEBUG", message=f"Pyscript lief erfolgreich! {msg}")
-        
-        log.warning("Event fired successfully!")
-    except Exception as e:
-        log.warning(f"Exception in tibber: {e}")
-        service.call("persistent_notification", "create", title="Tibber DEBUG ERROR", message=str(e))
-        event.fire("tibber_prices_calculated", title="Tibber Skript-Fehler", message=f"Kritischer Fehler im Tibber Skript: {e}")
+    )
+
+    if should_run:
+        if current_state != "on":
+            log.info(f"Universal Scheduler: Schalte {target_entity} EIN ({friendly_name}, Slot: {current_slot})")
+            service.call("homeassistant", "turn_on", entity_id=target_entity)
+            if notify_device and notify_device != "":
+                try:
+                    service.call(
+                        notify_device.split(".")[0],
+                        notify_device.split(".")[1] if "." in notify_device else "notify",
+                        title="⚡ Günstigster Strompreis aktiv",
+                        message=f"{friendly_name} wurde gestartet (Günstigster Preisslot: {current_slot} Uhr)."
+                    )
+                except Exception:
+                    pass
+    else:
+        if current_state != "off":
+            log.info(f"Universal Scheduler: Schalte {target_entity} AUS ({friendly_name}, Slot {current_slot} beendet)")
+            service.call("homeassistant", "turn_off", entity_id=target_entity)

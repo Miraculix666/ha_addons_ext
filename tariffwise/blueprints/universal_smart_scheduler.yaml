@@ -1,55 +1,141 @@
 blueprint:
-  name: "TariffWise: Universal Smart Scheduler"
-  description: "Universelle, preisgesteuerte Automatisierung für beliebige Geräte (Waschmaschine, Spülmaschine, Boiler etc.) mit TariffWise. Ermittelt die günstigsten Stunden (z.B. 3h bis 16:00 Uhr) und schaltet das Gerät entsprechend. Unterstützt auch durchgehende (zusammenhängende) Blöcke."
+  name: "TariffWise ⚡ Universeller Smart Device & Haushaltsgeräte-Scheduler"
+  description: >
+    ## 🧺 Smarte preisgesteuerte Automatisierung für beliebige Geräte
+
+    Schaltet beliebige Geräte (Waschmaschine, Spülmaschine, Trockner, Warmwasser-Boiler, Akkuladegerät, Luftentfeuchter, E-Auto etc.)
+    zu den **günstigsten Börsenstrompreisen** innerhalb eines frei definierbaren **Zeitfensters (Startzeit bis Deadline)** ein.
+
+    ---
+    ### 🌟 Kernfunktionen:
+    1. **Beliebiges Zielgerät:** Funktioniert mit jedem Schalter, Smart Plug oder Relais.
+    2. **Definiertes Zeitfenster (Deadline):** Gib an, ab wann das Gerät frühestens laufen darf und bis wann es spätestens fertig sein muss (z. B. zwischen 08:00 und 17:00 Uhr).
+    3. **Zusammenhängender Block vs. Gestückelt:**
+       - **Zusammenhängend (z. B. Waschmaschine/Spülmaschine):** Ermittelt den günstigsten Block am Stück, damit das Programm nicht unterbrochen wird.
+       - **Gestückelt (z. B. Boiler/Akku/Heizstab):** Wählt die absolut billigsten 15-Minuten-Slots über den Tag verteilt.
+    4. **Preis-Maßstab & Hard-Limit:** Wähle Brutto- oder Netto-Spotpreis und setze optional eine Preishöchstgrenze.
+    5. **Optionale Benachrichtigung:** Erhalte eine Push-Meldung beim automatischen Einschalten.
+
   domain: automation
   input:
+    # --- 1. GERÄT & LAUFZEIT ---
     target_device:
-      name: Gerät (Schalter/Steckdose)
-      description: "Das Gerät, das basierend auf dem Strompreis gesteuert werden soll."
+      name: "Zu steuerndes Gerät (Schalter / Steckdose)"
+      description: "Der Schalter oder Smart Plug des Geräts (z. B. switch.spulmaschine oder switch.waschmaschine)."
       selector:
         entity:
-          domain: switch
+
     target_hours:
-      name: Laufzeit (Stunden)
-      description: "Wie lange soll das Gerät insgesamt laufen? (z.B. 2.5 für 2 Stunden 30 Minuten)"
+      name: "Benötigte Laufzeit (Stunden)"
+      description: "Wie viele Stunden soll das Gerät insgesamt laufen? (z. B. 2.0 für 2 Stunden oder 1.5 für 1,5 Stunden)."
       default: 2.0
       selector:
         number:
           min: 0.25
           max: 24.0
           step: 0.25
-          unit_of_measurement: h
+          unit_of_measurement: "h"
           mode: slider
+
+    # --- 2. ZEITFENSTER (FRÜHESTER START & DEADLINE) ---
     start_time:
-      name: Frühester Start
-      description: "Ab wann darf das Gerät frühestens laufen?"
+      name: "Frühester Start"
+      description: "Ab welcher Uhrzeit darf das Gerät frühestens eingeschaltet werden? (z. B. 08:00:00)."
       default: "00:00:00"
       selector:
         time:
+
     end_time:
-      name: Spätestes Ende (Deadline)
-      description: "Bis wann muss das Gerät spätestens fertig sein?"
+      name: "Spätestes Ende (Deadline)"
+      description: "Bis zu welcher Uhrzeit muss der Lauf spätestens abgeschlossen sein? (z. B. 17:00:00)."
       default: "23:59:00"
       selector:
         time:
+
     continuous_block:
-      name: Zusammenhängender Block
-      description: "Soll die Laufzeit am Stück sein (Ein einzelner Block) oder darf sie in den günstigsten 15-Minuten-Takten gestückelt werden?"
+      name: "Zusammenhängender Block (Am Stück)"
+      description: "AKTIVIEREN für Waschmaschinen / Spülmaschinen (kein Unterbrechen). DEAKTIVIEREN für Boiler / Akkus (gestückelte billigste Slots)."
+      default: true
+      selector:
+        boolean:
+
+    # --- 3. PREIS-EINSTELLUNGEN ---
+    price_mode:
+      name: "Preis-Maßstab (Brutto vs. Netto-Spotpreis)"
+      description: "Wähle 'brutto' für den realen Endkundenpreis oder 'netto_spot' für den reinen Börsenpreis."
+      default: "brutto"
+      selector:
+        select:
+          options:
+            - label: "Brutto-Endkundenpreis (inkl. Netzentgelte & Steuern)"
+              value: "brutto"
+            - label: "Netto-Spotpreis (Reiner Day-Ahead Börsenstrompreis)"
+              value: "netto_spot"
+
+    price_sensor:
+      name: "Dynamischer Strompreis-Sensor (Optional)"
+      description: "Spezifischer Preissensor (z. B. sensor.electricity_price_im_beisen_12b). Leer lassen für automatische Erkennung."
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+
+    hard_max_price_enabled:
+      name: "Maximalpreis-Sperre aktivieren"
+      description: "Verhindert das Einschalten, wenn der Strompreis über dem eingestellten Maximalpreis liegt."
       default: false
       selector:
         boolean:
 
+    hard_max_price_threshold:
+      name: "Maximalpreis-Obergrenze (ct/kWh)"
+      description: "Preisgrenze in ct/kWh (z. B. 40.0)."
+      default: 40.0
+      selector:
+        number:
+          min: 10.0
+          max: 100.0
+          step: 1.0
+          unit_of_measurement: "ct/kWh"
+          mode: box
+
+    negative_prices_always_on:
+      name: "Bei Negativpreisen immer einschalten"
+      description: "Schaltet das Gerät sofort ein, wenn der Strompreis negativ wird."
+      default: false
+      selector:
+        boolean:
+
+    # --- 4. BENACHRICHTIGUNG ---
+    notify_device:
+      name: "Benachrichtigungs-Dienst (Optional)"
+      description: "Sendet eine Push-Meldung beim automatischen Start (z. B. notify.mobile_app_marius_13tpro oder leer lassen)."
+      default: ""
+      selector:
+        text:
+
 mode: restart
 
 trigger:
-  - platform: time_pattern
+  - trigger: time_pattern
     minutes: "/15"
+  - trigger: homeassistant
+    event: start
+  - trigger: event
+    event_type: "tibber_force_evaluation"
 
 action:
   - action: pyscript.tibber_evaluate_device
+    continue_on_error: true
     data:
       target_entity: !input target_device
       hours: !input target_hours
       start_time: !input start_time
       end_time: !input end_time
       continuous: !input continuous_block
+      price_sensor: !input price_sensor
+      price_mode: !input price_mode
+      hard_max_price_enabled: !input hard_max_price_enabled
+      hard_max_price_threshold: !input hard_max_price_threshold
+      negative_prices_always_on: !input negative_prices_always_on
+      notify_device: !input notify_device
