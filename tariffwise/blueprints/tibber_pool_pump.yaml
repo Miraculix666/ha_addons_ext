@@ -4,7 +4,7 @@ blueprint:
     ## 🏊 Intelligente, dynamische Poolpumpen-Steuerung (Multi-Saison & Multi-System)
 
     Diese Automatisierung optimiert die Laufzeiten der Poolpumpe anhand von **dynamischen Strompreisen** (Tibber / TariffWise / Börsenpreis),
-    **Jahreszeiten & Wassertemperatur**, **Sperrzeiten (Lärmschutz)** und bietet direkte Vorbereitung/Integration für **Akkudoktor EOS**, **EMHASS** und **PV-Überschuss**.
+    **Jahreszeiten & Wassertemperatur**, **Sperrzeiten (Lärmschutz)**, **absolutem Maximalpreis (Hard-Limit Not-Aus)** und bietet direkte Vorbereitung/Integration für **Akkudoktor EOS**, **EMHASS** und **PV-Überschuss**.
 
     ---
     ### 🌟 Kernfunktionen:
@@ -12,7 +12,9 @@ blueprint:
        - **Sommer:** Tagesteilung durch **8** (8x 3h-Fenster) – garantiert mindestens 15 min Wasserumwälzung alle 3 Stunden.
        - **Frühling & Herbst:** Tagesteilung durch **6** (6x 4h-Fenster) – optimiert für moderate Temperaturen.
        - **Winter:** Tagesteilung durch **4** (4x 6h-Fenster) – Frostschutz & Minimalfilterung.
-    2. **Preis-Maßstab:** Wahl zwischen realem **Brutto-Strompreis** (inkl. Steuern/Netzentgelte) oder reinem **Netto-Börsen-/Spotpreis**.
+    2. **Preis-Maßstab & Hard-Limit:** 
+       - Wahl zwischen realem **Brutto-Strompreis** oder reinem **Netto-Börsen-/Spotpreis**.
+       - **Absoluter Maximalpreis (Hard Limit):** Ein niemals zu überschreitender Höchstpreis, bei dem die Pumpe unter allen Umständen sofort gestoppt bzw. gesperrt wird.
     3. **Fail-Safe Fallback:** Fällt die Preis-API oder das Internet aus, greift ein frei konfigurierbarer **Fallback-Zeitplan** (z. B. 12:00–13:30 Uhr).
     4. **Sperrzeiten (Lärmschutz):** Definiere Ruhezeiten (z. B. 22:00–06:00 Uhr), in denen die Pumpe nicht läuft.
     5. **Akkudoktor EOS & EMHASS Vorbereitung:** Schalte nahtlos auf mathematische Gesamtkosten-Optimierer um, sobald PV oder Hausakku installiert werden.
@@ -68,6 +70,37 @@ blueprint:
         entity:
           domain: sensor
 
+    hard_max_price_enabled:
+      name: "Absoluten Maximalpreis (Hard Limit) aktivieren"
+      description: "Aktiviert den strikten Not-Aus-Schutz: Bei Strompreisen über diesem Wert darf die Pumpe NIEMALS laufen."
+      default: true
+      selector:
+        boolean:
+
+    hard_max_price_threshold:
+      name: "⛔ Niemals zu überschreitender Maximalpreis (ct/kWh)"
+      description: "Strikte Obergrenze. Steigt der Strompreis über diesen Wert, wird die Pumpe unter allen Umständen sofort gestoppt und gesperrt (z. B. 45 ct/kWh)."
+      default: 45.0
+      selector:
+        number:
+          min: 15.0
+          max: 150.0
+          step: 1.0
+          unit_of_measurement: "ct/kWh"
+          mode: box
+
+    max_price_threshold:
+      name: "Regulärer Maximal-Strompreis (Soft Limit)"
+      description: "Über diesem Preis werden optionale Zusatzläufe gestoppt (außer für den zwingenden Mindest-Intervall-Lauf)."
+      default: 35.0
+      selector:
+        number:
+          min: 10.0
+          max: 100.0
+          step: 1.0
+          unit_of_measurement: "ct/kWh"
+          mode: box
+
     negative_prices_always_on:
       name: "Super-Charge bei Negativpreisen"
       description: "Schaltet die Pumpe unabhängig vom Zeitfenster sofort ein, wenn der Strompreis unter die Negativpreisgrenze fällt."
@@ -84,18 +117,6 @@ blueprint:
           min: -50.0
           max: 10.0
           step: 0.5
-          mode: box
-
-    max_price_threshold:
-      name: "Maximaler Strompreis (Obergrenze)"
-      description: "Über diesem Preis wird die Pumpe gestoppt (außer für den zwingenden Mindest-Intervall-Lauf)."
-      default: 35.0
-      selector:
-        number:
-          min: 10.0
-          max: 100.0
-          step: 1.0
-          unit_of_measurement: "ct/kWh"
           mode: box
 
     # --- 3. SAISON- & TEMPERATUR-STEUERUNG ---
@@ -285,9 +306,11 @@ action:
       optimization_engine: !input optimization_engine
       price_mode: !input price_mode
       price_sensor: !input price_sensor
+      hard_max_price_enabled: !input hard_max_price_enabled
+      hard_max_price_threshold: !input hard_max_price_threshold
+      max_price_threshold: !input max_price_threshold
       negative_prices_always_on: !input negative_prices_always_on
       negative_price_threshold: !input negative_price_threshold
-      max_price_threshold: !input max_price_threshold
       duration_summer_hours: !input duration_summer_hours
       duration_spring_autumn_hours: !input duration_spring_autumn_hours
       duration_winter_hours: !input duration_winter_hours
