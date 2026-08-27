@@ -1,162 +1,307 @@
----
 blueprint:
-  name: Tibber Pool Pumpensteuerung (Smart)
+  name: "TariffWise ⚡ Universal Smart Pool Pump Optimizer"
   description: >
-    Intelligente Poolsteuerung basierend auf Tibber-Preisen.
-    Beachtet Jahreszeiten, Sonneneinstrahlung und Temperatur.
-    Im Hochsommer wird der Tag in 8 Intervalle geteilt, um eine Mindestlaufzeit (Standard 4h)
-    zu gewährleisten (mind. 15min pro Achtel). Die Pumpe läuft in den jeweils günstigsten Zeiten.
-    Bei negativen Preisen wird die Pumpe sofort eingeschaltet (falls konfiguriert).
+    ## 🏊 Intelligente, dynamische Poolpumpen-Steuerung (Multi-Saison & Multi-System)
+
+    Diese Automatisierung optimiert die Laufzeiten der Poolpumpe anhand von **dynamischen Strompreisen** (Tibber / TariffWise / Börsenpreis),
+    **Jahreszeiten & Wassertemperatur**, **Sperrzeiten (Lärmschutz)** und bietet direkte Vorbereitung/Integration für **Akkudoktor EOS**, **EMHASS** und **PV-Überschuss**.
+
+    ---
+    ### 🌟 Kernfunktionen:
+    1. **Erweiterte Tagesteilung nach Saisons:**
+       - **Sommer:** Tagesteilung durch **8** (8x 3h-Fenster) – garantiert mindestens 15 min Wasserumwälzung alle 3 Stunden.
+       - **Frühling & Herbst:** Tagesteilung durch **6** (6x 4h-Fenster) – optimiert für moderate Temperaturen.
+       - **Winter:** Tagesteilung durch **4** (4x 6h-Fenster) – Frostschutz & Minimalfilterung.
+    2. **Preis-Maßstab:** Wahl zwischen realem **Brutto-Strompreis** (inkl. Steuern/Netzentgelte) oder reinem **Netto-Börsen-/Spotpreis**.
+    3. **Fail-Safe Fallback:** Fällt die Preis-API oder das Internet aus, greift ein frei konfigurierbarer **Fallback-Zeitplan** (z. B. 12:00–13:30 Uhr).
+    4. **Sperrzeiten (Lärmschutz):** Definiere Ruhezeiten (z. B. 22:00–06:00 Uhr), in denen die Pumpe nicht läuft.
+    5. **Akkudoktor EOS & EMHASS Vorbereitung:** Schalte nahtlos auf mathematische Gesamtkosten-Optimierer um, sobald PV oder Hausakku installiert werden.
+
   domain: automation
   input:
-    optimization_engine:
-      name: Optimierungs-Engine
-      description: Wähle die Methode zur Preisoptimierung (Heuristisch oder Akkudoktor-EOS).
-      default: heuristic
-      selector:
-        select:
-          options:
-            - label: "Heuristik (TariffWise Standard)"
-              value: "heuristic"
-            - label: "Akkudoktor-EOS (Mathematisches Optimum)"
-              value: "akkudoktor_eos"
-    eos_schedule_sensor:
-      name: EOS Planungs-Sensor (Optional)
-      description: Der Sensor, der den von Akkudoktor-EOS generierten Schaltplan enthält (nur relevant wenn EOS gewählt ist).
-      default: ""
-      selector:
-        entity:
-          domain: sensor
+    # --- 1. HAUPTEINSTELLUNGEN ---
     target_entity:
-      name: Poolpumpe (Switch)
-      description: Der Schalter für die Poolpumpe.
+      name: "Poolpumpe (Schalter / Steckdose)"
+      description: "Der physische Schalter bzw. Smart Plug der Poolpumpe (z. B. switch.osram_plug_01_schalter_3)."
       selector:
         entity:
           domain: switch
-    duration_hours:
-      name: Mindestlaufzeit pro Tag (Stunden)
-      description: Die minimale Laufzeit pro Tag (z.B. im Sommer 4h).
-      default: 4.0
+
+    optimization_engine:
+      name: "Optimierungs-Engine / Modus"
+      description: >
+        - **TariffWise Heuristik (Aktuell empfohlen):** Optimiert rein auf die günstigsten Börsenpreis-Intervalle (Kein PV/Akku nötig).
+        - **Akkudoktor EOS:** Nutzt die Berechnung des Akkudoktor EOS Solvers (Empfohlen für PV + Hausbatterie).
+        - **EMHASS:** Nutzt den linearen MPC-Solver von EMHASS.
+        - **Hybrid:** EOS/EMHASS steuert, aber die 3h-Intervallhygiene wird als Sicherheitsnetz garantiert.
+      default: "tariffwise"
       selector:
-        number:
-          min: 1.0
-          max: 24.0
-          step: 0.5
-          unit_of_measurement: h
-          mode: slider
-    season_sensor:
-      name: Jahreszeiten Sensor
-      description: Sensor für die aktuelle Jahreszeit (z.B. sensor.season).
+        select:
+          options:
+            - label: "TariffWise Heuristik (Reiner Dynamic Price - JETZT aktiv)"
+              value: "tariffwise"
+            - label: "Akkudoktor EOS (Empfohlen bei PV & Heimspeicher)"
+              value: "eos"
+            - label: "EMHASS (Lineare Programmierung / MPC)"
+              value: "emhass"
+            - label: "Hybrid (EOS/EMHASS + 3h-Intervall-Hygieneschutz)"
+              value: "hybrid"
+
+    # --- 2. PREIS-EINSTELLUNGEN ---
+    price_mode:
+      name: "Preis-Maßstab (Brutto vs. Netto-Spotpreis)"
+      description: "Wähle 'brutto' für den real zu zahlenden Endkundenpreis oder 'netto_spot' für den reinen Börsen-/Marktpreis."
+      default: "brutto"
       selector:
-        entity:
-          domain: sensor
-    solar_radiation:
-      name: Sonneneinstrahlung (Lux / W/m²)
-      description: Sensor für die aktuelle Sonneneinstrahlung.
-      selector:
-        entity:
-          domain: sensor
-    temperature_sensor:
-      name: Temperatur (Außen/Wasser)
-      description: Sensor für die relevante Temperatur.
-      selector:
-        entity:
-          domain: sensor
-    notification_service:
-      name: Benachrichtigungsdienst (Optional)
-      description: Der notify Service, um den Plan für morgen abends zu senden (z.B. notify.mobile_app_my_phone).
+        select:
+          options:
+            - label: "Brutto-Endkundenpreis (inkl. Netzentgelte & Steuern)"
+              value: "brutto"
+            - label: "Netto-Spotpreis (Reiner Day-Ahead Börsenstrompreis)"
+              value: "netto_spot"
+
+    price_sensor:
+      name: "Dynamischer Strompreis-Sensor (Optional)"
+      description: "Wähle den spezifischen Strompreis-Sensor (z. B. sensor.electricity_price_im_beisen_12b). Leer lassen für automatische Erkennung."
       default: ""
       selector:
-        text:
-    temp_high:
-      name: Temperatur Hochsommer
-      description: Temperatur ab der Hochsommer Modus aktiv wird.
-      default: 25.0
-      selector:
-        number:
-          min: 15.0
-          max: 40.0
-          step: 1.0
-          unit_of_measurement: °C
-          mode: slider
-    temp_very_high:
-      name: Temperatur Sehr Hoch
-      description: Temperatur für zusätzliche Laufzeit.
-      default: 30.0
-      selector:
-        number:
-          min: 20.0
-          max: 45.0
-          step: 1.0
-          unit_of_measurement: °C
-          mode: slider
-    temp_low:
-      name: Temperatur Niedrig
-      description: Temperatur für reduzierte Laufzeit.
-      default: 15.0
-      selector:
-        number:
-          min: 5.0
-          max: 25.0
-          step: 1.0
-          unit_of_measurement: °C
-          mode: slider
-    temp_very_low:
-      name: Temperatur Sehr Niedrig
-      description: Temperatur für stark reduzierte Laufzeit.
-      default: 10.0
-      selector:
-        number:
-          min: -5.0
-          max: 20.0
-          step: 1.0
-          unit_of_measurement: °C
-          mode: slider
-    solar_threshold:
-      name: Solar Schwellenwert
-      description: Sonnenstrahlung für zusätzliche Laufzeit.
-      default: 500.0
-      selector:
-        number:
-          min: 100.0
-          max: 1500.0
-          step: 50.0
-          unit_of_measurement: W/m²
-          mode: slider
+        entity:
+          domain: sensor
+
     negative_prices_always_on:
-      name: Bei negativen Preisen immer an
-      description: Schaltet die Pumpe unabhängig vom Intervall ein, wenn der Strompreis negativ ist.
+      name: "Super-Charge bei Negativpreisen"
+      description: "Schaltet die Pumpe unabhängig vom Zeitfenster sofort ein, wenn der Strompreis unter die Negativpreisgrenze fällt."
       default: true
       selector:
         boolean:
 
+    negative_price_threshold:
+      name: "Negativpreis-Schwelle"
+      description: "Preisschwelle, ab der die Pumpe sofort dauerhaft eingeschaltet wird (Standard: 0.00)."
+      default: 0.0
+      selector:
+        number:
+          min: -50.0
+          max: 10.0
+          step: 0.5
+          mode: box
+
+    max_price_threshold:
+      name: "Maximaler Strompreis (Obergrenze)"
+      description: "Über diesem Preis wird die Pumpe gestoppt (außer für den zwingenden Mindest-Intervall-Lauf)."
+      default: 35.0
+      selector:
+        number:
+          min: 10.0
+          max: 100.0
+          step: 1.0
+          unit_of_measurement: "ct/kWh"
+          mode: box
+
+    # --- 3. SAISON- & TEMPERATUR-STEUERUNG ---
+    duration_summer_hours:
+      name: "Sommer: Ziel-Laufzeit pro Tag"
+      description: "Gesamtlaufzeit im Sommer (Tagesteilung durch 8 = mind. 15 min pro 3 Stunden)."
+      default: 4.0
+      selector:
+        number:
+          min: 2.0
+          max: 12.0
+          step: 0.5
+          unit_of_measurement: "h"
+          mode: slider
+
+    duration_spring_autumn_hours:
+      name: "Frühling / Herbst: Ziel-Laufzeit pro Tag"
+      description: "Gesamtlaufzeit in der Übergangszeit (Tagesteilung durch 6 = mind. 15 min pro 4 Stunden)."
+      default: 2.5
+      selector:
+        number:
+          min: 1.0
+          max: 8.0
+          step: 0.5
+          unit_of_measurement: "h"
+          mode: slider
+
+    duration_winter_hours:
+      name: "Winter: Ziel-Laufzeit pro Tag"
+      description: "Gesamtlaufzeit im Winter (Tagesteilung durch 4 = mind. 15 min pro 6 Stunden für Frostschutz)."
+      default: 1.5
+      selector:
+        number:
+          min: 0.5
+          max: 6.0
+          step: 0.5
+          unit_of_measurement: "h"
+          mode: slider
+
+    summer_temp_threshold:
+      name: "Sommer-Temperaturschwelle (°C)"
+      description: "Ab dieser Außen-/Wassertemperatur schaltet das System in den Sommer-Modus (8 Intervalle)."
+      default: 22.0
+      selector:
+        number:
+          min: 15.0
+          max: 30.0
+          step: 1.0
+          unit_of_measurement: "°C"
+          mode: slider
+
+    winter_temp_threshold:
+      name: "Winter-Temperaturschwelle (°C)"
+      description: "Unter dieser Temperatur schaltet das System in den Winter-Modus (4 Intervalle)."
+      default: 12.0
+      selector:
+        number:
+          min: 0.0
+          max: 18.0
+          step: 1.0
+          unit_of_measurement: "°C"
+          mode: slider
+
+    temperature_sensor:
+      name: "Temperatur-Sensor (Außen oder Poolwasser)"
+      description: "Sensor zur automatischen Ermittlung der Wassertemperatur oder Außentemperatur (z. B. sensor.dwd_weather_temperature)."
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+
+    season_sensor:
+      name: "Jahreszeiten-Sensor (Optional)"
+      description: "Optionaler Sensor für die Jahreszeit (z. B. sensor.season). Wenn leer, wird die Temperatur verwendet."
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+
+    # --- 4. SPERRZEITEN (LÄRMSCHUTZ) ---
+    quiet_hours_enabled:
+      name: "Sperrzeiten (Lärmschutz) aktivieren"
+      description: "Verhindert den Pumpenbetrieb während definierter Nacht- oder Ruhezeiten."
+      default: false
+      selector:
+        boolean:
+
+    quiet_hours_start:
+      name: "Sperrzeit: Beginn"
+      description: "Uhrzeit, ab der die Pumpe nicht mehr laufen darf (z. B. 22:00:00)."
+      default: "22:00:00"
+      selector:
+        time:
+
+    quiet_hours_end:
+      name: "Sperrzeit: Ende"
+      description: "Uhrzeit, ab der die Pumpe wieder freigegeben ist (z. B. 06:00:00)."
+      default: "06:00:00"
+      selector:
+        time:
+
+    # --- 5. FALLBACK-VARIANTE (WENN KEINE PREISE VORLIEGEN) ---
+    fallback_mode:
+      name: "Fallback-Methode bei Strompreis-Ausfall"
+      description: >
+        Greift automatisch, wenn die Tibber API nicht erreichbar ist oder keine Preisdaten vorliegen:
+        - **Feste Uhrzeit:** Fährt einen täglichen Lauf zu einer festen Uhrzeit.
+        - **Intervall-Taktung:** Teilt den Tag starr nach Intervallen auf.
+      default: "fixed_time"
+      selector:
+        select:
+          options:
+            - label: "Feste Uhrzeit (z. B. 12:00 bis 13:30 Uhr)"
+              value: "fixed_time"
+            - label: "Symmetrische Intervall-Taktung (Gleichmäßig über 24h)"
+              value: "interval"
+
+    fallback_time_start:
+      name: "Fallback: Feste Start-Uhrzeit"
+      description: "Uhrzeit für den täglichen Notlauf bei Preisausfall (z. B. 12:00:00)."
+      default: "12:00:00"
+      selector:
+        time:
+
+    fallback_duration_hours:
+      name: "Fallback: Laufzeit (Stunden)"
+      description: "Dauer des Notlaufs bei Preisausfall (z. B. 1.5 Stunden)."
+      default: 1.5
+      selector:
+        number:
+          min: 0.5
+          max: 6.0
+          step: 0.5
+          unit_of_measurement: "h"
+          mode: slider
+
+    # --- 6. ZUKUNFTS-SCHNITTSTELLEN (EOS / EMHASS / PV) ---
+    eos_entity:
+      name: "Akkudoktor EOS: Freigabe-Schalter/Sensor (Zukunft)"
+      description: "Schalter oder Binary Sensor aus Akkudoktor EOS, wenn installiert."
+      default: ""
+      selector:
+        entity:
+
+    emhass_entity:
+      name: "EMHASS: Freigabe-Schalter/Sensor (Zukunft)"
+      description: "Schalter oder Binary Sensor aus EMHASS MPC, wenn installiert."
+      default: ""
+      selector:
+        entity:
+
+    pv_surplus_sensor:
+      name: "PV-Überschuss Sensor (Zukunft)"
+      description: "Leistungssensor für PV-Überschuss in Watt (z. B. sensor.pv_surplus_power)."
+      default: ""
+      selector:
+        entity:
+          domain: sensor
+
+    pv_surplus_threshold:
+      name: "PV-Überschuss Schwelle (Watt)"
+      description: "Ab wie viel Watt Solarüberschuss die Pumpe tagsüber zusätzlich laufen soll."
+      default: 1500.0
+      selector:
+        number:
+          min: 500.0
+          max: 5000.0
+          step: 100.0
+          unit_of_measurement: "W"
+          mode: box
+
 mode: restart
 
 trigger:
-  - platform: time_pattern
+  - trigger: time_pattern
     minutes: "/15"
-  - platform: homeassistant
+  - trigger: homeassistant
     event: start
-  - platform: event
+  - trigger: event
     event_type: "tibber_force_evaluation"
 
 action:
-  # The actual evaluation is handed over to a pyscript because finding the cheapest 15-minute
-  # block inside eight 3-hour windows over 24h dynamically from an external Tibber API using
-  # just Jinja2 in YAML is too complex. We align with the existing `tibber_smart_device.yaml`.
   - action: pyscript.tibber_evaluate_pool
+    continue_on_error: true
     data:
-      optimization_engine: !input optimization_engine
-      eos_schedule_sensor: !input eos_schedule_sensor
       target_entity: !input target_entity
-      hours: !input duration_hours
-      season_sensor: !input season_sensor
-      solar_radiation: !input solar_radiation
-      temperature_sensor: !input temperature_sensor
+      optimization_engine: !input optimization_engine
+      price_mode: !input price_mode
+      price_sensor: !input price_sensor
       negative_prices_always_on: !input negative_prices_always_on
-      notification_service: !input notification_service
-      temp_high: !input temp_high
-      temp_very_high: !input temp_very_high
-      temp_low: !input temp_low
-      temp_very_low: !input temp_very_low
-      solar_threshold: !input solar_threshold
+      negative_price_threshold: !input negative_price_threshold
+      max_price_threshold: !input max_price_threshold
+      duration_summer_hours: !input duration_summer_hours
+      duration_spring_autumn_hours: !input duration_spring_autumn_hours
+      duration_winter_hours: !input duration_winter_hours
+      summer_temp_threshold: !input summer_temp_threshold
+      winter_temp_threshold: !input winter_temp_threshold
+      temperature_sensor: !input temperature_sensor
+      season_sensor: !input season_sensor
+      quiet_hours_enabled: !input quiet_hours_enabled
+      quiet_hours_start: !input quiet_hours_start
+      quiet_hours_end: !input quiet_hours_end
+      fallback_mode: !input fallback_mode
+      fallback_time_start: !input fallback_time_start
+      fallback_duration_hours: !input fallback_duration_hours
+      eos_entity: !input eos_entity
+      emhass_entity: !input emhass_entity
+      pv_surplus_sensor: !input pv_surplus_sensor
+      pv_surplus_threshold: !input pv_surplus_threshold
