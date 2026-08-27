@@ -1,0 +1,282 @@
+blueprint:
+  name: "TariffWise ⚡ Strompreis-Ankündigung & Prognose (inkl. Grafik & Sprachansage)"
+  description: >
+    ## 📈 Smarte Strompreis-Ankündigung & Day-Ahead Prognose
+
+    Erstellt vollautomatisch detaillierte **Preisberichte, Spar-Empfehlungen und Grafiken** für dynamische Stromtarife (Tibber, aWATTar, EPEX Spot, TariffWise).
+
+    ---
+    ### 🌟 Funktionen:
+    1. **Flexible Sendezeiten:** 
+       - **14:00 Uhr:** Sofort-Info sobald die neuen Börsenstrompreise für morgen feststehen.
+       - **19:00 Uhr:** Detaillierter Abend-Digest & Empfehlung für Haushaltsgeräte / Pool / E-Auto.
+       - **07:00 Uhr:** Morgen-Briefing für den aktuellen Tag.
+       - **Live-Trigger:** Sofort-Meldung bei **negativen Strompreisen** oder **extremen Preissprüngen**.
+    2. **Multi-Channel Empfänger-Wahl:**
+       - **Mobile Push (Companion App):** Inklusive Rich-Data & optionaler Preisverlauf-Grafik.
+       - **Echo / Alexa & Smart Speaker:** Sprachausgabe auf ausgewählten Echos (z. B. Wohnzimmer, Küche).
+       - **Persistent Notification:** Schöne Markdown-Übersicht direkt im Home Assistant Dashboard.
+    3. **Grafik-Einbindung:** Sendet den Live-Preis-Graphen direkt an das Smartphone.
+
+  domain: automation
+  input:
+    # --- 1. PREISSENSOR & DATENQUELLE ---
+    price_sensor:
+      name: "Dynamischer Strompreis-Sensor"
+      description: "Sensor mit Preisdaten und Day-Ahead Attributen (z. B. sensor.electricity_price_im_beisen_12b oder sensor.nordpool_kwh_de_eur)."
+      selector:
+        entity:
+          domain: sensor
+
+    forecast_day:
+      name: "Prognose-Fokus"
+      description: "Soll der Preisbericht primär für 'morgen' (Standard um 14:00/19:00 Uhr) oder für 'heute' erstellt werden?"
+      default: "tomorrow"
+      selector:
+        select:
+          options:
+            - label: "Morgen (Day-Ahead Analyse für den Folgetag)"
+              value: "tomorrow"
+            - label: "Heute (Tagesaktueller Preisverlauf)"
+              value: "today"
+
+    # --- 2. SENDEZEITEN & TRIGGER ---
+    trigger_time_1:
+      name: "Sendezeit 1 (z. B. Day-Ahead Veröffentlichung um 14:00 Uhr)"
+      description: "Erste feste Uhrzeit für die Preisankündigung."
+      default: "14:00:00"
+      selector:
+        time:
+
+    trigger_time_2_enabled:
+      name: "Zweite Sendezeit aktivieren (z. B. 19:00 Uhr Abend-Digest)"
+      default: true
+      selector:
+        boolean:
+
+    trigger_time_2:
+      name: "Sendezeit 2"
+      default: "19:00:00"
+      selector:
+        time:
+
+    alert_negative_prices:
+      name: "Sofort-Alarm bei Negativpreisen (< 0,00 ct/kWh)"
+      description: "Sendet eine Eilmeldung, sobald der aktuelle Strompreis negativ wird."
+      default: true
+      selector:
+        boolean:
+
+    # --- 3. EMPFÄNGER-AUSWAHL ---
+    notify_device:
+      name: "Mobile App Empfänger (Push)"
+      description: "Wähle den Benachrichtigungsdienst für Smartphones (z. B. notify.mobile_app_marius_13tpro oder notify.notify)."
+      default: "notify.notify"
+      selector:
+        text:
+
+    enable_dashboard_notification:
+      name: "Dashboard Benachrichtigung (Persistent Notification)"
+      description: "Erzeugt eine Benachrichtigung im Glocken-Symbol der Home Assistant UI."
+      default: true
+      selector:
+        boolean:
+
+    enable_alexa:
+      name: "Sprachausgabe auf Echo / Smart Speakern aktivieren"
+      description: "Liest die Preisankündigung laut auf ausgewählten Lautsprechern vor."
+      default: false
+      selector:
+        boolean:
+
+    alexa_media_player:
+      name: "Echo / Media Player Ziel"
+      description: "Die Echo- bzw. Lautsprecher-Entität (z. B. media_player.echo_wohnzimmer)."
+      default: ""
+      selector:
+        entity:
+          domain: media_player
+
+    # --- 4. GRAFIK- & BILD-EINSTELLUNGEN ---
+    include_graph:
+      name: "Preis-Graph als Bild in Smartphone-Push einbetten"
+      description: "Fügt der Benachrichtigung ein Bild / Diagramm des Preisverlaufs hinzu."
+      default: true
+      selector:
+        boolean:
+
+    graph_image_url:
+      name: "URL / Pfad zur Preisgrafik (Optional)"
+      description: "Lokale Bild-URL oder Kamera-Proxy (z. B. /local/tibber_chart.png oder /api/camera_proxy/camera.tibber_graph)."
+      default: "/local/energy_price_graph.png"
+      selector:
+        text:
+
+mode: restart
+
+trigger:
+  - trigger: time
+    at: !input trigger_time_1
+    id: trigger_time_1
+  - trigger: time
+    at: !input trigger_time_2
+    id: trigger_time_2
+  - trigger: numeric_state
+    entity_id: !input price_sensor
+    below: 0.0
+    id: trigger_negative_price
+
+variables:
+  sensor_id: !input price_sensor
+  focus_day: !input forecast_day
+  include_img: !input include_graph
+  img_url: !input graph_image_url
+  notify_srv: !input notify_device
+  use_ui: !input enable_dashboard_notification
+  use_alexa: !input enable_alexa
+  alexa_dev: !input alexa_media_player
+
+action:
+  - choose:
+      # 1. Negativpreis Sofort-Alarm
+      - conditions:
+          - condition: trigger
+            id: trigger_negative_price
+          - condition: template
+            value_template: "!input alert_negative_prices"
+        sequence:
+          - variables:
+              neg_msg: "⚡ Achtung: Der Strompreis ist jetzt negativ ({{ states(sensor_id) }} €/kWh)! Schalte energieintensive Geräte, Poolpumpe oder E-Auto ein, um bares Geld zu sparen."
+          - action: persistent_notification.create
+            data:
+              title: "⚡ Negativer Strompreis Alarm!"
+              message: "{{ neg_msg }}"
+          - action: "{{ notify_srv }}"
+            data:
+              title: "⚡ Negativer Strompreis Alarm!"
+              message: "{{ neg_msg }}"
+              data:
+                tag: "negative-price-alert"
+                push:
+                  sound: "default"
+                  badge: 1
+
+      # 2. Reguläre Preisankündigung & Tages-/Abend-Digest
+      - conditions:
+          - condition: or
+            conditions:
+              - condition: trigger
+                id: trigger_time_1
+              - condition: and
+                conditions:
+                  - condition: trigger
+                    id: trigger_time_2
+                  - condition: template
+                    value_template: "!input trigger_time_2_enabled"
+        sequence:
+          - variables:
+              attrs: "{{ state_attr(sensor_id, focus_day) | default([], true) }}"
+              current_val: "{{ states(sensor_id) | float(0.0) }}"
+              # Preisberechnung in Cent oder Euro
+              is_eur: "{{ current_val < 2.0 }}"
+              scale: "{{ 100.0 if is_eur else 1.0 }}"
+              prices: >
+                {% if attrs and attrs | length > 0 %}
+                  {% set ns = namespace(p=[]) %}
+                  {% for item in attrs %}
+                    {% set pr = item.total if item.total is defined else (item.price if item.price is defined else item.value) %}
+                    {% set ns.p = ns.p + [pr | float(0.0) * scale] %}
+                  {% endfor %}
+                  {{ ns.p }}
+                {% else %}
+                  []
+                {% endif %}
+              avg_price: "{{ (prices | sum / (prices | length)) | round(2) if prices | length > 0 else (current_val * scale) | round(2) }}"
+              min_price: "{{ (prices | min) | round(2) if prices | length > 0 else (current_val * scale) | round(2) }}"
+              max_price: "{{ (prices | max) | round(2) if prices | length > 0 else (current_val * scale) | round(2) }}"
+              
+              # Günstigste und teuerste Zeit ermitteln
+              min_hour_idx: >
+                {% if prices | length > 0 %}
+                  {{ prices.index(prices | min) }}
+                {% else %}
+                  0
+                {% endif %}
+              max_hour_idx: >
+                {% if prices | length > 0 %}
+                  {{ prices.index(prices | max) }}
+                {% else %}
+                  0
+                {% endif %}
+              min_time_str: "{{ '%02d:00' % min_hour_idx }}"
+              max_time_str: "{{ '%02d:00' % max_hour_idx }}"
+              
+              # Nachrichtentexte
+              day_label: "{{ 'morgen' if focus_day == 'tomorrow' else 'heute' }}"
+              header_title: "⚡ Strompreis-Prognose für {{ day_label | capitalize }}"
+              digest_msg: >
+                Strompreise für {{ day_label }}:
+                Ø Durchschnitt: {{ avg_price }} ct/kWh
+                🟢 Tiefstpreis: {{ min_price }} ct/kWh um {{ min_time_str }} Uhr
+                🔴 Höchstpreis: {{ max_price }} ct/kWh um {{ max_time_str }} Uhr.
+                Empfehlung: Großverbraucher & Akku-Ladung auf {{ min_time_str }} Uhr timen!
+              
+              voice_msg: >
+                Hier ist die Strompreis-Übersicht für {{ day_label }}: Der Durchschnittspreis liegt bei {{ avg_price }} Cent pro Kilowattstunde. Die günstigste Zeit ist um {{ min_time_str }} Uhr mit {{ min_price }} Cent. Die teuerste Phase ist um {{ max_time_str }} Uhr mit {{ max_price }} Cent.
+
+          # 1. UI Persistent Notification
+          - if:
+              - condition: template
+                value_template: "{{ use_ui }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  title: "{{ header_title }}"
+                  message: >
+                    ### {{ header_title }}
+                    - 📊 **Durchschnittspreis:** `{{ avg_price }} ct/kWh`
+                    - 🟢 **Günstigste Stunde:** `{{ min_time_str }} Uhr` (**{{ min_price }} ct/kWh**)
+                    - 🔴 **Teuerste Stunde:** `{{ max_time_str }} Uhr` (**{{ max_price }} ct/kWh**)
+                    
+                    💡 *Tipp: Waschmaschine, Trockner, Pool und E-Auto für {{ min_time_str }} Uhr einplanen.*
+                  notification_id: "tariffwise_price_digest"
+
+          # 2. Smartphone Push mit optionalem Bild / Graph
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ include_img }}"
+                sequence:
+                  - action: "{{ notify_srv }}"
+                    continue_on_error: true
+                    data:
+                      title: "{{ header_title }}"
+                      message: "{{ digest_msg }}"
+                      data:
+                        image: "{{ img_url }}"
+                        tag: "price-forecast-digest"
+                        push:
+                          badge: 1
+              - conditions: []
+                sequence:
+                  - action: "{{ notify_srv }}"
+                    continue_on_error: true
+                    data:
+                      title: "{{ header_title }}"
+                      message: "{{ digest_msg }}"
+                      data:
+                        tag: "price-forecast-digest"
+
+          # 3. Sprachausgabe auf Alexa / Smart Speaker
+          - if:
+              - condition: template
+                value_template: "{{ use_alexa and alexa_dev != '' }}"
+            then:
+              - action: notify.alexa_media
+                continue_on_error: true
+                target:
+                  entity_id: "{{ alexa_dev }}"
+                data:
+                  message: "{{ voice_msg }}"
+                  data:
+                    type: tts
