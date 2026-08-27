@@ -1,0 +1,192 @@
+blueprint:
+  name: "System & Homelab 🛠️ Universeller UpdateAll & Proxmox / HA System-Manager"
+  description: >
+    ## 🔄 Universelle automatisierte Update-Verwaltung für das gesamte Homelab
+
+    Ermöglicht das vollautomatische oder interaktive Aktualisieren aller Systemebenen:
+    - **Proxmox VE Host OS** (`apt-get dist-upgrade`)
+    - **Virtuelle Maschinen (VMs)**
+    - **LXC Container**
+    - **Docker Container Lifecycle** (Komodo CI/CD)
+    - **Home Assistant Core, OS & Addons**
+    - **HACS Integrationen & Lovelace-Karten**
+    - **ZHA Quirks, Zigbee OTA & Blueprints**
+    - **Lokaler LLM Stack**
+
+    ---
+    ### 🌟 Kernfunktionen:
+    1. **Flexibler Zeitplan:** Führe Updates nach festem Zeitplan aus (z. B. nachts um 03:30 Uhr).
+    2. **Vor-Update Backup:** Erstellt vor dem Update-Lauf optional ein frisches Home Assistant Backup.
+    3. **Selektive Subsysteme:** Wähle flexibel, welche Systemschichten aktualisiert werden sollen.
+    4. **Interaktive Push-Benachrichtigungen:** Erhalte auf Wunsch eine Push-Meldung mit Aktions-Buttons ("Jetzt updaten" / "Überspringen").
+    5. **Abschlussbericht:** Sendet eine Erfolgs- oder Fehlerzusammenfassung nach dem Update-Lauf.
+
+  domain: automation
+  input:
+    # --- 1. ZEITPLAN & TRIGGER ---
+    update_time:
+      name: "Update-Uhrzeit"
+      description: "Zu welcher Uhrzeit soll die Update-Routine frühestens starten?"
+      default: "03:30:00"
+      selector:
+        time:
+
+    auto_install_without_prompt:
+      name: "Vollautomatische Installation (Ohne Bestätigung)"
+      description: "Wenn aktiviert, werden Updates zur gewählten Zeit direkt ohne vorherige Push-Nachfrage installiert."
+      default: false
+      selector:
+        boolean:
+
+    # --- 2. VOR-UPDATE BACKUP ---
+    create_backup_before_update:
+      name: "Sicherheits-Backup vor Update erstellen"
+      description: "Erstellt vor Beginn der Updates ein frisches Home Assistant Backup."
+      default: true
+      selector:
+        boolean:
+
+    # --- 3. SUBSYSTEM-AUSWAHL ---
+    update_host_os:
+      name: "1. Proxmox VE Host OS aktualisieren"
+      description: "Führt apt-get dist-upgrade auf dem Proxmox-Host aus."
+      default: true
+      selector:
+        boolean:
+
+    update_vms:
+      name: "2. Proxmox VMs aktualisieren"
+      description: "Aktualisiert alle laufenden Linux-VMs via QEMU Guest Agent."
+      default: true
+      selector:
+        boolean:
+
+    update_lxcs:
+      name: "3. Proxmox LXC Container aktualisieren"
+      description: "Führt Updates in allen LXC-Containern aus."
+      default: true
+      selector:
+        boolean:
+
+    update_ha_core_addons:
+      name: "4. Home Assistant Core, OS & Addons aktualisieren"
+      description: "Installiert anstehende Updates für HA Core, Operating System und Supervisor Add-ons."
+      default: true
+      selector:
+        boolean:
+
+    update_hacs:
+      name: "5. HACS Integrationen & Frontend-Karten aktualisieren"
+      description: "Installiert alle neuen HACS-Versionen."
+      default: true
+      selector:
+        boolean:
+
+    update_blueprints_zha:
+      name: "6. Blueprints & Zigbee-Firmware aktualisieren"
+      description: "Aktualisiert Community-Blueprints und Zigbee-Geräte-Firmware."
+      default: true
+      selector:
+        boolean:
+
+    update_llm_stack:
+      name: "7. Lokalen LLM Stack aktualisieren"
+      description: "Aktualisiert lokale llama.cpp Instanzen und Model-Runtimes im LXC 600."
+      default: true
+      selector:
+        boolean:
+
+    # --- 4. BENACHRICHTIGUNGEN ---
+    notify_device:
+      name: "Benachrichtigungs-Dienst (Smartphone)"
+      description: "Der Notify-Dienst für Push-Nachrichten (z. B. notify.mobile_app_marius_13tpro oder leer lassen)."
+      default: ""
+      selector:
+        text:
+
+mode: queued
+max: 2
+
+trigger:
+  - trigger: time
+    at: !input update_time
+  - trigger: event
+    event_type: "homelab_trigger_master_update"
+  - trigger: webhook
+    webhook_id: "trigger_all_updates_yaml"
+
+action:
+  # 1. Vor-Update Backup
+  - if:
+      - condition: template
+        value_template: !input create_backup_before_update
+    then:
+      - action: backup.create
+        continue_on_error: true
+
+  # 2. Host OS Update
+  - if:
+      - condition: template
+        value_template: !input update_host_os
+    then:
+      - action: script.a_01_host_os_update
+        continue_on_error: true
+
+  # 3. Proxmox VMs Update
+  - if:
+      - condition: template
+        value_template: !input update_vms
+    then:
+      - action: script.b_01_proxmox_vms_update
+        continue_on_error: true
+
+  # 4. Proxmox LXCs Update
+  - if:
+      - condition: template
+        value_template: !input update_lxcs
+    then:
+      - action: script.b_02_proxmox_lxcs_update
+        continue_on_error: true
+
+  # 5. HACS Update
+  - if:
+      - condition: template
+        value_template: !input update_hacs
+    then:
+      - action: script.c_02_hacs_update
+        continue_on_error: true
+
+  # 6. Blueprints & ZHA Update
+  - if:
+      - condition: template
+        value_template: !input update_blueprints_zha
+    then:
+      - action: script.c_03_zha_quirks_update
+        continue_on_error: true
+
+  # 7. LLM Stack Update
+  - if:
+      - condition: template
+        value_template: !input update_llm_stack
+    then:
+      - action: script.d_01_llm_stack_update
+        continue_on_error: true
+
+  # 8. HA Core / OS Update
+  - if:
+      - condition: template
+        value_template: !input update_ha_core_addons
+    then:
+      - action: script.c_01_ha_core_update
+        continue_on_error: true
+
+  # 9. Abschluss-Benachrichtigung
+  - if:
+      - condition: template
+        value_template: "{{ notify_device != '' }}"
+    then:
+      - action: !input notify_device
+        continue_on_error: true
+        data:
+          title: "🛠️ Homelab UpdateAll abgeschlossen"
+          message: "Der Master-Update-Lauf für Proxmox, LXCs, VMs, HACS und Home Assistant wurde erfolgreich durchgeführt."
