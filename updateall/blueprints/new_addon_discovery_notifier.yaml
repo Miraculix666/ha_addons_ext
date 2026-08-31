@@ -1,0 +1,52 @@
+blueprint:
+  name: "System & Store 📦 Neues Add-on & Update Discovery Notifier"
+  description: >
+    ## 🔍 Automatische Erkennung & Benachrichtigung für neue & aktualisierte Add-ons
+    Benachrichtigt sofort per Push-Nachricht (HA Companion App / Persistent Notification),
+    sobald ein neues Add-on im Store verfügbar ist oder installierte Add-ons ein Update erhalten.
+  domain: automation
+  input:
+    notify_device:
+      name: "Zielgerät (Companion App)"
+      description: "Smartphone für interaktive Push-Benachrichtigungen."
+      default: ""
+      selector:
+        device:
+          integration: mobile_app
+    send_persistent_notification:
+      name: "Persistente Benachrichtigung in Home Assistant erstellen"
+      default: true
+      selector:
+        boolean: {}
+
+mode: queued
+max: 5
+
+trigger:
+  - trigger: state
+    entity_id: update.home_assistant_supervisor_update
+  - trigger: time_pattern
+    hours: "/6"
+
+action:
+  - variables:
+      uninstalled_addons: >-
+        {{ states.update | selectattr('attributes.installed', 'equalto', false) | list }}
+      updates_pending: >-
+        {{ states.update | selectattr('state', 'eq', 'on') | list }}
+  - if:
+      - condition: template
+        value_template: "{{ uninstalled_addons | count > 0 or updates_pending | count > 0 }}"
+    then:
+      - if:
+          - condition: template
+            value_template: !input send_persistent_notification
+        then:
+          - action: persistent_notification.create
+            data:
+              notification_id: "addon_discovery_summary"
+              title: "📦 Add-on Store & Update Report"
+              message: >
+                Es gibt {{ updates_pending | count }} ausstehende Updates und {{ uninstalled_addons | count }} Add-on Empfehlungen im Store.
+                
+                [Zum Add-on Store](/hassio/store)
