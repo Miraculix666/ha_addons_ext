@@ -1,0 +1,26 @@
+{
+  "name": "Trillion Voice Agent (Jarvis)",
+  "version": "1.0.0",
+  "slug": "trillion_voice_agent",
+  "description": "Ultra-low-latency Voice-First AI Agent adapted from hellotrillion.ai with Multi-Tier Brain, Obsidian Memory & Orb UI",
+  "arch": ["amd64", "aarch64"],
+  "startup": "application",
+  "boot": "auto",
+  "ingress": true,
+  "ingress_port": 8890,
+  "panel_icon": "mdi:microphone-message",
+  "panel_title": "Voice Jarvis",
+  "audio": true,
+  "options": {
+    "local_llm_url": "http://192.168.80.60:8080/v1",
+    "tts_engine": "piper",
+    "stt_engine": "whisper",
+    "enable_obsidian_sync": true
+  },
+  "schema": {
+    "local_llm_url": "str",
+    "tts_engine": "list(piper|elevenlabs)",
+    "stt_engine": "list(whisper|deepgram)",
+    "enable_obsidian_sync": "bool"
+  }
+}
