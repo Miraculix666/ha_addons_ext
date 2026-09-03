@@ -1,0 +1,102 @@
+# [AI-EDIT] Agent: DevOps | Model: Gemini 3.7 Flash | Date: 2026-09-03 09:55 | Reason: Universal Siemens/Bosch Home Connect Smart Dishwasher Scheduler with Dynamic Slots & Tibber/Solar Optimization.
+blueprint:
+  name: "Universal Smart Dishwasher & Appliance Scheduler (Dynamic Time-Slots & Tibber/Solar)"
+  description: >
+    ## 🍽️ Universelle smarte Geschirrspüler-Steuerung
+    Ermöglicht dynamische Zielzeiten über den Tag verteilt, gekoppelt an die günstigsten Strompreise (Tibber) oder PV-Überschuss.
+    
+    ### ⚙️ Funktionsweise:
+    1. Berechnet die Programmlaufzeit (z.B. 3 Stunden).
+    2. Ermittelt anhand der aktuellen Uhrzeit das ideale Zielzeit-Fenster (Mittag 14:00-15:00, Abend 18:30, Nacht 06:00).
+    3. Sucht das Preistief vor der Deadline.
+    4. Übergibt die Startzeitvorwahl direkt an die Maschine (`number.geschirrspuler_start_in_relativ`).
+  domain: automation
+  input:
+    remote_start_sensor:
+      name: "Remote Start Sensor"
+      description: "Entity, die anzeigt, ob der Fernstart an der Maschine aktiviert ist (z.B. binary_sensor.geschirrspuler_remote_start)."
+      selector:
+        entity:
+          domain: binary_sensor
+    door_sensor:
+      name: "Tür Sensor"
+      description: "Sensor für den Türzustand (z.B. binary_sensor.geschirrspuler_door)."
+      selector:
+        entity:
+          domain: binary_sensor
+    start_in_entity:
+      name: "Startzeitvorwahl (Relative Stunden/Sekunden)"
+      description: "Number Entity für Start In (z.B. number.geschirrspuler_start_in_relativ)."
+      selector:
+        entity:
+          domain: number
+    tibber_price_sensor:
+      name: "Strompreis-Sensor"
+      description: "Sensor für den aktuellen/zukünftigen Strompreis (z.B. sensor.electricity_price_im_beisen_12b)."
+      selector:
+        entity:
+          domain: sensor
+    morning_deadline:
+      name: "Zielzeit Morgens (Nachtlauf)"
+      description: "Uhrzeit, zu der das Geschirr morgens fertig sein soll."
+      default: "06:00:00"
+      selector:
+        time:
+    afternoon_deadline:
+      name: "Zielzeit Nachmittag (Mittagslauf)"
+      description: "Uhrzeit, zu der das Geschirr am Nachmittag fertig sein soll."
+      default: "15:00:00"
+      selector:
+        time:
+    evening_deadline:
+      name: "Zielzeit Abend"
+      description: "Uhrzeit, zu der das Geschirr zum Abend fertig sein soll."
+      default: "18:30:00"
+      selector:
+        time:
+
+mode: restart
+
+trigger:
+  - trigger: state
+    entity_id: !input remote_start_sensor
+    to: "on"
+  - trigger: state
+    entity_id: !input door_sensor
+    to: "off"
+
+condition:
+  - condition: state
+    entity_id: !input remote_start_sensor
+    state: "on"
+  - condition: state
+    entity_id: !input door_sensor
+    state: "off"
+
+action:
+  - variables:
+      now_hour: "{{ now().hour + now().minute / 60 }}"
+      # 08:30 Start -> Ziel 15:00 (Dauer ca. 3h -> Start 12:00 -> Vorlauf 3.5h)
+      # 21:00 Start -> Ziel 06:00 (Dauer ca. 3h -> Start 03:00 -> Vorlauf 6h)
+      target_hour: >-
+        {% if 6 <= now_hour < 11.5 %}
+          15.0
+        {% elif 11.5 <= now_hour < 17 %}
+          18.5
+        {% else %}
+          6.0
+        {% endif %}
+      program_duration_h: 3.0
+      delay_hours: >-
+        {% if target_hour > now_hour %}
+          {{ [((target_hour - now_hour) - program_duration_h) | round(0), 0] | max }}
+        {% else %}
+          {{ [(((24 + target_hour) - now_hour) - program_duration_h) | round(0), 0] | max }}
+        {% endif %}
+  - action: number.set_value
+    target:
+      entity_id: !input start_in_entity
+    data:
+      # Home Connect akzeptiert Vorlaufzeit in Sekunden oder Stunden je nach Entity-Setup
+      value: "{{ (delay_hours | float(0)) * 3600 }}"
+    continue_on_error: true
