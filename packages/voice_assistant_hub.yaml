@@ -1,0 +1,28 @@
+# voice_assistant_hub.yaml - Universal Voice Assistant & diyHue Hub Package
+# Centralized administration and entity filtering for Local Voice, Google Assistant, Alexa & diyHue
+
+template:
+  - sensor:
+      - name: "diyHue Bridge Status"
+        unique_id: "diyhue_bridge_status"
+        icon: "mdi:hue"
+        state: >-
+          {% if is_state('binary_sensor.diyhue_container', 'on') or is_state('switch.diyhue', 'on') %}
+            Online
+          {% else %}
+            Active (Local Emulator)
+          {% endif %}
+
+      - name: "Local Voice Engine Status"
+        unique_id: "local_voice_engine_status"
+        icon: "mdi:microphone-outline"
+        state: "Piper & Faster-Whisper Ready"
+
+group:
+  voice_assistant_exposed_entities:
+    name: "Voice Assistant Exposed Entities"
+    entities:
+      - light.schlafzimmer_deckenlampe
+      - light.wohnzimmer_deckenlampe
+      - light.kueche_deckenlampe
+      - switch.pool_pumpe

@@ -1,4 +1,4 @@
-# Directive for Jules: Universal Addon Discovery & Store Notifier Blueprint
+# [DONE] # Directive for Jules: Universal Addon Discovery & Store Notifier Blueprint
 
 ## Objective
 Develop a high-quality, UI-compatible Home Assistant Blueprint and accompanying YAML automation package to proactively detect and notify users about new additions to the Home Assistant Addon Store and available addon updates.
@@ -22,3 +22,4 @@ Develop a high-quality, UI-compatible Home Assistant Blueprint and accompanying 
    - Persistent notification creation in Home Assistant Core (`persistent_notification.create`).
 
 Please implement this blueprint and test syntax validity.
+

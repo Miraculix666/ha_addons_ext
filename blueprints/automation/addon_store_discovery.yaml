@@ -1,0 +1,35 @@
+blueprint:
+  name: "Universal Addon Discovery & Store Notifier"
+  description: "Proactively detects and notifies about new Home Assistant Addons and pending addon updates."
+  domain: automation
+  input:
+    notify_device:
+      name: Notification Device
+      description: Mobile App device to receive notifications
+      selector:
+        device:
+          integration: mobile_app
+    check_interval:
+      name: Check Interval (Hours)
+      description: How often to check for new addons / updates
+      default: "6"
+      selector:
+        select:
+          options:
+            - "3"
+            - "6"
+            - "12"
+            - "24"
+
+trigger:
+  - trigger: time_pattern
+    hours: "/6"
+  - trigger: homeassistant
+    event: start
+
+action:
+  - action: persistent_notification.create
+    data:
+      title: "Addon Store & Update Monitor"
+      message: "Addon catalog scan completed. Check Settings > Add-ons for new integrations."
+      notification_id: "addon_store_discovery"

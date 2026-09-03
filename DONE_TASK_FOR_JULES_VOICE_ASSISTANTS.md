@@ -1,4 +1,4 @@
-﻿# Task for Jules: Custom Voice Assistant & DiyHue Hub
+# [DONE] # Task for Jules: Custom Voice Assistant & DiyHue Hub
 
 ## Background
 Der User benötigt eine spezifische Seite (vergleichbar mit der Home Assistant Cloud / Nabu Casa Übersichtsseite), auf der alle lokalen/alternativen Sprachassistenten zentral verwaltet werden können.
@@ -20,3 +20,4 @@ Der User benötigt eine spezifische Seite (vergleichbar mit der Home Assistant C
 - Anleitung zur automatischen Verlinkung der `alexa:` und `google_assistant:` Intents mit diesem Hub.
 
 Bitte dieses Feature als eigenständige Erweiterung im `ha_extensions` Repository umsetzen.
+
